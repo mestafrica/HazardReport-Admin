@@ -20,16 +20,16 @@ const MetricCard: React.FC<MetricCardProps> = ({
   isPositive,
 }) => {
   return (
-    <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col justify-between h-full border border-gray-100">
-      <div className="flex justify-between items-start mb-4">
+    <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 flex flex-col justify-between h-full border border-gray-100">
+      <div className="flex justify-between items-start mb-3 sm:mb-4">
         <div
-          className="w-12 h-12 rounded-lg flex items-center justify-center text-xl"
+          className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-lg sm:text-xl"
           style={{ backgroundColor: iconBgColor, color: iconColor }}
         >
           {icon}
         </div>
         <div
-          className={`text-sm font-medium ${
+          className={`text-xs sm:text-sm font-medium ${
             isPositive ? 'text-green-500' : 'text-red-500'
           }`}
         >
@@ -37,8 +37,8 @@ const MetricCard: React.FC<MetricCardProps> = ({
         </div>
       </div>
       <div>
-        <h3 className="text-3xl font-bold text-gray-900">{value}</h3>
-        <p className="text-sm text-gray-400 mt-1">{title}</p>
+        <h3 className="text-2xl sm:text-3xl font-bold text-gray-900">{value}</h3>
+        <p className="text-xs sm:text-sm text-gray-400 mt-1">{title}</p>
       </div>
     </div>
   );

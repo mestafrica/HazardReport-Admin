@@ -1,10 +1,13 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useState, useRef, useMemo } from "react";
+import StatusBadge from "../components/StatusBadge";
+import ConfirmModal from "../components/ConfirmModal";
+import { FiVolume2, FiSearch, FiChevronDown, FiPaperclip, FiMapPin, FiX, FiFile, FiImage, FiFileText, FiVideo, FiEye, FiDownload, FiExternalLink, FiTrash, FiEdit, FiCheck, FiPlus } from "react-icons/fi";
 import toast from "react-hot-toast";
 import { FiCheck, FiChevronDown, FiDownload, FiEdit, FiExternalLink, FiEye, FiFile, FiFileText, FiImage, FiMapPin, FiPaperclip, FiPlus, FiSearch, FiTrash, FiVideo, FiVolume2, FiX } from "react-icons/fi";
 import adminDashboard from '../assets/images/adminDashboard.jpg';
-import StatusBadge from "../components/StatusBadge";
-import { Announcement, Attachment, LocationData, useDashboard } from "../context/DashboardContext";
-import { announcementApi } from "../services/announcementApi";
+import { useDashboard } from "../context/DashboardContext";
+import { Announcement } from "../interfaces/announcement";
+import { LocationData } from "../interfaces/attachment";
 
 interface UploadedFile {
   file: File;
@@ -15,8 +18,8 @@ interface UploadedFile {
 }
 
 const Announcements: React.FC = () => {
-  const { announcements, addAnnouncement, deleteAnnouncement, updateAnnouncement, addReport } = useDashboard();
-
+  const { announcements, addAnnouncement, deleteAnnouncement, updateAnnouncement } = useDashboard();
+  
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<"Alert" | "Info" | "Update">("Alert");
   const [message, setMessage] = useState("");
@@ -40,7 +43,9 @@ const Announcements: React.FC = () => {
   const [showViewModal, setShowViewModal] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
-
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [announcementToDelete, setAnnouncementToDelete] = useState<number | null>(null);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredAnnouncements = useMemo(() => {
@@ -115,37 +120,6 @@ const Announcements: React.FC = () => {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const simulateUploadProgress = async (index: number) => {
-    return new Promise<void>((resolve) => {
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += Math.random() * 30;
-        if (progress >= 100) {
-          progress = 100;
-          clearInterval(interval);
-          setUploadedFiles(prev => prev.map((f, i) =>
-            i === index ? { ...f, progress: 100, status: 'uploaded' } : f
-          ));
-          resolve();
-        } else {
-          setUploadedFiles(prev => prev.map((f, i) =>
-            i === index ? { ...f, progress, status: 'uploading' } : f
-          ));
-        }
-      }, 200);
-    });
-  };
-
-  const uploadFiles = async () => {
-    const pendingFiles = uploadedFiles.filter(f => f.status === 'pending');
-    for (let i = 0; i < pendingFiles.length; i++) {
-      const originalIndex = uploadedFiles.findIndex(f => f.file === pendingFiles[i].file && f.status === 'pending');
-      if (originalIndex !== -1) {
-        await simulateUploadProgress(originalIndex);
-      }
-    }
-  };
-
   const removeFile = (index: number) => {
     setUploadedFiles(prev => prev.filter((_, i) => i !== index));
   };
@@ -159,66 +133,17 @@ const Announcements: React.FC = () => {
     setIsUploading(true);
 
     try {
-      let uploadedAttachments: Attachment[] = [];
+      await addAnnouncement({
+        title,
+        detail: message,
+        category,
+        status: pinToTop ? "Pinned" : "Active",
+        pinToFeed,
+        location: locationData.text ? locationData : undefined,
+        attachments: uploadedFiles.length > 0 ? uploadedFiles.map(f => f.file) : undefined
+      });
 
-      if (uploadedFiles.length > 0) {
-        await uploadFiles();
-
-        try {
-          const response = await announcementApi.createAnnouncement(
-            {
-              title,
-              detail: message,
-              category,
-              status: pinToTop ? "Pinned" : "Active",
-              pinToFeed,
-              location: locationData.text ? locationData : undefined
-            },
-            uploadedFiles.map(f => f.file)
-          );
-          uploadedAttachments = response.attachments || [];
-          if (response.status === 'success') {
-            toast.success("Announcement posted successfully!");
-          }
-        } catch (apiError) {
-          console.log('API upload failed, using local URLs:', apiError);
-          uploadedAttachments = uploadedFiles.map(f => ({
-            url: URL.createObjectURL(f.file),
-            filename: f.file.name,
-            publicId: `local_${Date.now()}`,
-            format: f.file.name.split('.').pop() || ''
-          }));
-        }
-      }
-
-      // const newAnnouncement = addAnnouncement({
-      //   title,
-      //   detail: message,
-      //   category: category.toLowerCase(),
-      //   status: pinToTop ? "Pinned" : "Active",
-      //   location: locationData.text ? locationData : undefined,
-      //   attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined
-      // });
-
-      // const firstAttachmentUrl = uploadedAttachments.length > 0 ? uploadedAttachments[0].url : undefined;
-      // const attachmentNames = uploadedAttachments.length > 0
-      //   ? uploadedAttachments.map(a => a.filename).join(', ')
-      //   : undefined;
-
-      // addReport({
-      //   title,
-      //   location: locationData.text || "Global",
-      //   name: "Admin System",
-      //   status: "Confirmed",
-      //   category: category,
-      //   reportType: 'announcement',
-      //   attachmentName: attachmentNames,
-      //   attachmentUrl: firstAttachmentUrl,
-      //   locationData: locationData.text ? locationData : undefined,
-      //   announcementId: newAnnouncement.id
-      // });
-
-      // toast.success("Announcement posted successfully!");
+      toast.success("Announcement posted successfully!");
       resetForm();
     } catch (error) {
       console.error('Error posting announcement:', error);
@@ -229,27 +154,42 @@ const Announcements: React.FC = () => {
   };
 
   const handleDeleteAnnouncement = (id: number) => {
-    if (window.confirm('Are you sure you want to delete this announcement?')) {
-      deleteAnnouncement(id);
-      toast.success('Announcement deleted successfully');
-      setShowViewModal(false);
+    setAnnouncementToDelete(id);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDeleteAnnouncement = async () => {
+    if (announcementToDelete !== null) {
+      try {
+        await deleteAnnouncement(announcementToDelete);
+        toast.success('Announcement deleted successfully');
+        setShowViewModal(false);
+        setDeleteModalOpen(false);
+        setAnnouncementToDelete(null);
+      } catch (error) {
+        toast.error('Failed to delete announcement');
+      }
     }
   };
 
-  const handleUpdateAnnouncement = () => {
+  const handleUpdateAnnouncement = async () => {
     if (!editingAnnouncement) return;
-
-    updateAnnouncement(editingAnnouncement.id, {
-      title: editingAnnouncement.title,
-      detail: editingAnnouncement.detail,
-      category: editingAnnouncement.category.toLowerCase(),
-      status: editingAnnouncement.status
-    });
-
-    toast.success('Announcement updated successfully');
-    setShowEditModal(false);
-    setEditingAnnouncement(null);
-    setShowViewModal(false);
+    
+    try {
+      await updateAnnouncement(editingAnnouncement.id, {
+        title: editingAnnouncement.title,
+        detail: editingAnnouncement.detail,
+        category: editingAnnouncement.category.toLowerCase(),
+        status: editingAnnouncement.status
+      });
+      
+      toast.success('Announcement updated successfully');
+      setShowEditModal(false);
+      setEditingAnnouncement(null);
+      setShowViewModal(false);
+    } catch (error) {
+      toast.error('Failed to update announcement');
+    }
   };
 
   const openEditModal = (announcement: Announcement) => {
@@ -991,6 +931,20 @@ const Announcements: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setAnnouncementToDelete(null);
+        }}
+        onConfirm={confirmDeleteAnnouncement}
+        title="Delete Announcement"
+        message="Are you sure you want to delete this announcement? This action cannot be undone and the announcement will be permanently removed from the system."
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   );
 };

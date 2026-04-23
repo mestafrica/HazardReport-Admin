@@ -6,8 +6,11 @@ export const apiAdminLogin = async (
 ): Promise<AxiosResponse> => {
   try {
     return await apiClient.post("/api/admin/signin", payload);
-  } catch (error) {
-    throw new Error(`Login failed: ${error}`);
+  } catch (error: any) {
+    if (!error.response) {
+      throw new Error("Cannot connect to server. Please make sure the backend is running on port 3001.");
+    }
+    throw new Error(error.response?.data?.message || "Login failed. Please check your credentials.");
   }
 };
 export const apiGetAdminProfile = async (): Promise<AxiosResponse> => {

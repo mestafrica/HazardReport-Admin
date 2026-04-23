@@ -38,7 +38,7 @@ const AdminLogin: React.FC = () => {
         await refreshData();
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.message || error.message || "Login failed";
+      const errorMessage = error.message || "Login failed";
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);

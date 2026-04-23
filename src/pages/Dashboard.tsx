@@ -2,11 +2,13 @@ import React, { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import MetricCard from "../components/MetricCard";
 import StatusBadge from "../components/StatusBadge";
-import { FiHome, FiUsers, FiAlertOctagon, FiPercent, FiPaperclip, FiMapPin, FiMap, FiVolume2, FiX, FiImage, FiFileText, FiFile, FiVideo, FiUpload, FiCheck, FiAlertCircle, FiEye } from "react-icons/fi";
+import { FiHome, FiUsers, FiAlertOctagon, FiPercent, FiPaperclip, FiMapPin, FiMap, FiVolume2, FiX, FiImage, FiFileText, FiFile, FiVideo, FiUpload, FiCheck, FiAlertCircle, FiEye, FiAlertTriangle } from "react-icons/fi";
 import toast from "react-hot-toast";
 import ghMap from "../assets/images/map_GH.png";
-import { useDashboard, LocationData, Attachment } from "../context/DashboardContext";
+import { useDashboard } from "../context/DashboardContext";
+import { LocationData } from "../interfaces/attachment";
 import { announcementApi } from "../services/announcementApi";
+import { apiCreateReport, CreateReportData } from "../services/reports";
 
 interface UploadedFile {
   file: File;
@@ -17,7 +19,7 @@ interface UploadedFile {
 }
 
 const Dashboard: React.FC = () => {
-  const { reports, addReport, addAnnouncement } = useDashboard();
+  const { reports, users, reportStats, addReport, addAnnouncement } = useDashboard();
   
   const [announcementText, setAnnouncementText] = useState("");
   const [pinToTop, setPinToTop] = useState(true);
@@ -28,6 +30,22 @@ const Dashboard: React.FC = () => {
   const [locationData, setLocationData] = useState<LocationData>({ text: "" });
   const [showAttachmentPanel, setShowAttachmentPanel] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // New Report Modal states
+  const [showNewReportModal, setShowNewReportModal] = useState(false);
+  const [newReportTitle, setNewReportTitle] = useState("");
+  const [newReportCategory, setNewReportCategory] = useState("Floods");
+  const [newReportDescription, setNewReportDescription] = useState("");
+  const [newReportLocation, setNewReportLocation] = useState("");
+  const [newReportCity, setNewReportCity] = useState("");
+  const [newReportCountry, setNewReportCountry] = useState("Ghana");
+  const [newReportFiles, setNewReportFiles] = useState<UploadedFile[]>([]);
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const newReportFileRef = useRef<HTMLInputElement>(null);
+
+  // Recent Reports Moderation pagination
+  const [recentReportsPage, setRecentReportsPage] = useState(1);
+  const recentReportsItemsPerPage = 5;
 
   const getFileIcon = (filename: string) => {
     const ext = filename.split('.').pop()?.toLowerCase();
@@ -120,14 +138,12 @@ const Dashboard: React.FC = () => {
     
     try {
       const announcementTitle = "Quick Alert: " + announcementText.substring(0, 30) + (announcementText.length > 30 ? "..." : "");
-      
-      let uploadedAttachments: Attachment[] = [];
-      
+
       if (uploadedFiles.length > 0) {
         await uploadFilesToCloudinary();
         
         try {
-          const response = await announcementApi.createAnnouncement(
+          await announcementApi.createAnnouncement(
             {
               title: announcementTitle,
               detail: announcementText,
@@ -138,46 +154,30 @@ const Dashboard: React.FC = () => {
             },
             uploadedFiles.map(f => f.file)
           );
-          uploadedAttachments = response.attachments || [];
         } catch (apiError) {
           console.log('API upload failed, using local URLs:', apiError);
-          uploadedAttachments = uploadedFiles.map(f => ({
-            url: URL.createObjectURL(f.file),
-            filename: f.file.name,
-            publicId: `local_${Date.now()}`,
-            format: f.file.name.split('.').pop() || ''
-          }));
         }
       }
 
-      const newAnnouncement = addAnnouncement({
+      addAnnouncement({
         title: announcementTitle,
         detail: announcementText,
-        category: "alert",
+        category: "Alert",
         status: pinToTop ? "Pinned" : "Active",
-        location: locationData.text ? locationData : undefined,
-        attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined
+        pinToFeed: pinToTop,
+        location: locationData.text ? locationData : undefined
       });
 
-      const firstAttachmentUrl = uploadedAttachments.length > 0 ? uploadedAttachments[0].url : undefined;
-      const attachmentNames = uploadedAttachments.length > 0 
-        ? uploadedAttachments.map(a => a.filename).join(', ')
-        : undefined;
-      
       addReport({
         title: announcementText.substring(0, 40) + (announcementText.length > 40 ? "..." : ""),
+        hazardtype: "Alert",
+        description: announcementText,
         location: locationData.text || "Global",
-        name: "Admin System",
-        status: "Confirmed",
-        category: "Alert",
-        reportType: 'announcement',
-        attachmentName: attachmentNames,
-        attachmentUrl: firstAttachmentUrl,
-        locationData: locationData.text ? locationData : undefined,
-        announcementId: newAnnouncement?.id
+        city: "Accra",
+        country: "Ghana"
       });
 
-      toast.success("Alert posted successfully with attachments!");
+      toast.success("Alert posted successfully");
       resetForm();
     } catch (error) {
       console.error('Error posting alert:', error);
@@ -196,6 +196,95 @@ const Dashboard: React.FC = () => {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  // New Report handlers
+  const resetNewReportForm = () => {
+    setNewReportTitle("");
+    setNewReportCategory("Floods");
+    setNewReportDescription("");
+    setNewReportLocation("");
+    setNewReportCity("");
+    setNewReportCountry("Ghana");
+    setNewReportFiles([]);
+    setShowNewReportModal(false);
+    if (newReportFileRef.current) newReportFileRef.current.value = "";
+  };
+
+  const handleNewReportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const newFiles = Array.from(e.target.files);
+      const validFiles = newFiles.filter(file => {
+        const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (!validTypes.includes(file.type)) {
+          toast.error(`Invalid file type: ${file.name}`);
+          return false;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          toast.error(`File too large: ${file.name} (max 10MB)`);
+          return false;
+        }
+        return true;
+      });
+
+      const newUploadedFiles: UploadedFile[] = validFiles.map(file => ({
+        file,
+        progress: 0,
+        status: 'pending'
+      }));
+
+      setNewReportFiles(prev => [...prev, ...newUploadedFiles]);
+    }
+    if (newReportFileRef.current) newReportFileRef.current.value = "";
+  };
+
+  const removeNewReportFile = (index: number) => {
+    setNewReportFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubmitNewReport = async () => {
+    if (!newReportTitle.trim() || !newReportDescription.trim()) {
+      toast.error("Title and description are required!");
+      return;
+    }
+
+    setIsSubmittingReport(true);
+
+    try {
+      const reportData: CreateReportData = {
+        title: newReportTitle,
+        hazardtype: newReportCategory,
+        description: newReportDescription,
+        location: newReportLocation || `${newReportCity}, ${newReportCountry}`,
+        city: newReportCity || "Unknown",
+        country: newReportCountry || "Ghana"
+      };
+
+      const files = newReportFiles.map(f => f.file);
+      const response = await apiCreateReport(reportData, files);
+
+      if (response.data?.hazardReport) {
+        const createdReport = response.data.hazardReport;
+
+        // Add to local state for immediate display
+        addReport({
+          title: createdReport.title,
+          hazardtype: createdReport.hazardtype || newReportCategory,
+          description: newReportDescription,
+          location: createdReport.location,
+          city: createdReport.city || newReportCity || "Unknown",
+          country: createdReport.country || newReportCountry || "Ghana"
+        });
+
+        toast.success("Report created successfully!");
+        resetNewReportForm();
+      }
+    } catch (error) {
+      console.error('Error creating report:', error);
+      toast.error("Failed to create report. Please try again.");
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -205,8 +294,8 @@ const Dashboard: React.FC = () => {
             iconBgColor="#2563EB"
             iconColor="#FFFFFF"
             title="Total Reports"
-            value="1,247"
-            percentage="12.5%"
+            value={reportStats?.totalReports?.toLocaleString() ?? reports.filter(r => r.reportType !== 'announcement').length.toLocaleString()}
+            percentage="Live"
             isPositive={true}
           />
         </Link>
@@ -215,9 +304,9 @@ const Dashboard: React.FC = () => {
             icon={<FiUsers />}
             iconBgColor="#22C55E"
             iconColor="#FFFFFF"
-            title="New Users"
-            value="3,456"
-            percentage="8.3%"
+            title="Total Users"
+            value={users.length.toLocaleString()}
+            percentage="Live"
             isPositive={true}
           />
         </Link>
@@ -227,8 +316,8 @@ const Dashboard: React.FC = () => {
             iconBgColor="#EF4444"
             iconColor="#FFFFFF"
             title="Active Hazards"
-            value="789"
-            percentage="15.7%"
+            value={reportStats?.totalReportsByStatus?.open?.toLocaleString() ?? reports.filter(r => r.status?.toLowerCase() === 'active' || r.status?.toLowerCase() === 'pending').length.toLocaleString()}
+            percentage="Pending"
             isPositive={true}
           />
         </Link>
@@ -238,23 +327,23 @@ const Dashboard: React.FC = () => {
             iconBgColor="#F59E0B"
             iconColor="#FFFFFF"
             title="Pending Moderation"
-            value="74.5%"
-            percentage="2.1%"
-            isPositive={true}
+            value={reportStats?.totalReportsByStatus?.['in progress']?.toLocaleString() ?? reports.filter(r => r.status?.toLowerCase() === 'pending').length.toLocaleString()}
+            percentage="Requires Action"
+            isPositive={false}
           />
         </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center space-x-2">
-              <FiVolume2 className="text-brand-blue text-2xl" />
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 sm:mb-6 flex items-center space-x-2">
+              <FiVolume2 className="text-brand-blue text-xl sm:text-2xl" />
               <span>Global Announcement System</span>
             </h2>
             
             <textarea
-              className="w-full bg-gray-50 border border-transparent rounded-lg p-4 h-40 focus:outline-none focus:ring-1 focus:ring-brand-blue resize-none mb-4"
+              className="w-full bg-gray-50 border border-transparent rounded-lg p-3 sm:p-4 h-32 sm:h-40 focus:outline-none focus:ring-1 focus:ring-brand-blue resize-none mb-4 text-sm"
               placeholder="Compose a flood alert or environmental warning..."
               value={announcementText}
               onChange={(e) => setAnnouncementText(e.target.value)}
@@ -288,13 +377,14 @@ const Dashboard: React.FC = () => {
                 </div>
                 <div className="space-y-2 max-h-40 overflow-y-auto">
                   {uploadedFiles.map((uploadedFile, index) => (
-                    <div key={index} className="flex items-center gap-3 bg-white rounded-lg p-2 shadow-sm">
+                    <div key={`${uploadedFile.file.name}-${index}`} className="flex items-center gap-3 bg-white rounded-lg p-2 shadow-sm">
                       <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
                         {uploadedFile.file.type.startsWith('image/') ? (
                           <img 
                             src={URL.createObjectURL(uploadedFile.file)} 
                             alt="" 
                             className="w-full h-full object-cover"
+                            loading="lazy"
                           />
                         ) : (
                           getFileIcon(uploadedFile.file.name)
@@ -498,7 +588,7 @@ const Dashboard: React.FC = () => {
                 View all reports &rarr;
               </Link>
             </div>
-            
+
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left text-gray-500">
                 <thead className="text-xs text-gray-400 uppercase bg-transparent border-b border-gray-100">
@@ -512,7 +602,9 @@ const Dashboard: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {reports.slice(0, 5).map((row) => (
+                  {reports.filter(r => r.reportType !== 'announcement')
+                    .slice((recentReportsPage - 1) * recentReportsItemsPerPage, recentReportsPage * recentReportsItemsPerPage)
+                    .map((row) => (
                     <tr key={row.id} className="border-b border-gray-50 last:border-none hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-4">
                         <div className="flex flex-col">
@@ -581,6 +673,43 @@ const Dashboard: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            <div className="flex items-center justify-between mt-6">
+              <span className="text-sm text-gray-500 font-medium">
+                Showing {Math.min(recentReportsItemsPerPage, reports.filter(r => r.reportType !== 'announcement').length - (recentReportsPage - 1) * recentReportsItemsPerPage)} of {reports.filter(r => r.reportType !== 'announcement').length} reports
+              </span>
+              <div className="flex space-x-1">
+                <button
+                  onClick={() => setRecentReportsPage(p => Math.max(1, p - 1))}
+                  disabled={recentReportsPage === 1}
+                  className="px-3 py-1 border border-gray-200 rounded text-gray-500 text-sm hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  Previous
+                </button>
+                <div className="flex space-x-1 mx-1">
+                  {Array.from({ length: Math.ceil(reports.filter(r => r.reportType !== 'announcement').length / recentReportsItemsPerPage) }).map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setRecentReportsPage(idx + 1)}
+                      className={`px-3 py-1 rounded text-sm font-medium transition-colors cursor-pointer ${
+                        recentReportsPage === idx + 1
+                          ? 'bg-brand-blue text-white'
+                          : 'border border-gray-200 text-gray-500 hover:bg-gray-50'
+                      }`}
+                    >
+                      {idx + 1}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setRecentReportsPage(p => Math.min(Math.ceil(reports.filter(r => r.reportType !== 'announcement').length / recentReportsItemsPerPage), p + 1))}
+                  disabled={recentReportsPage === Math.ceil(reports.filter(r => r.reportType !== 'announcement').length / recentReportsItemsPerPage)}
+                  className="px-3 py-1 border border-gray-200 rounded text-gray-500 text-sm hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -594,9 +723,9 @@ const Dashboard: React.FC = () => {
             />
           </div>
           
-          <div className="bg-gray-50 rounded-lg p-5">
+          <div className="bg-gray-50 rounded-lg p-4 sm:p-5">
             <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Regional Hotspot</h3>
-            <ul className="space-y-3 font-medium text-sm">
+            <ul className="space-y-3 font-medium text-xs sm:text-sm">
               <li className="flex justify-between items-center">
                 <span className="text-gray-700">High</span>
                 <span className="text-red-500">Red</span>
@@ -613,6 +742,172 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* New Report Modal */}
+      {showNewReportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-brand-blue rounded-full flex items-center justify-center">
+                  <FiAlertTriangle className="text-white" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">New Hazard Report</h3>
+              </div>
+              <button onClick={() => resetNewReportForm()} className="text-gray-400 hover:text-gray-600 p-1">
+                <FiX className="text-2xl" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              {/* Title */}
+              <div>
+                <label className="block text-sm font-bold text-gray-900 mb-2">Title</label>
+                <input
+                  type="text"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                  placeholder="Enter report title..."
+                  value={newReportTitle}
+                  onChange={(e) => setNewReportTitle(e.target.value)}
+                />
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-sm font-bold text-gray-900 mb-2">Hazard Category</label>
+                <div className="flex flex-wrap gap-2">
+                  {['Floods', 'Fire', 'Accident', 'Environmental', 'Wildfire', 'Others'].map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setNewReportCategory(cat)}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-all border ${
+                        newReportCategory === cat
+                          ? 'border-brand-blue text-brand-blue bg-blue-50'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-bold text-gray-900 mb-2">Description</label>
+                <textarea
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg p-4 h-32 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue resize-none"
+                  placeholder="Describe the hazard details..."
+                  value={newReportDescription}
+                  onChange={(e) => setNewReportDescription(e.target.value)}
+                />
+              </div>
+
+              {/* Location */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-bold text-gray-900 mb-2">Location</label>
+                  <div className="flex items-center bg-gray-50 border border-gray-200 rounded-lg px-3">
+                    <FiMapPin className="text-gray-400 mr-2" />
+                    <input
+                      type="text"
+                      className="w-full bg-transparent py-3 text-sm outline-none"
+                      placeholder="Full address..."
+                      value={newReportLocation}
+                      onChange={(e) => setNewReportLocation(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-2">City</label>
+                  <input
+                    type="text"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm"
+                    placeholder="City"
+                    value={newReportCity}
+                    onChange={(e) => setNewReportCity(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Country */}
+              <div>
+                <label className="block text-sm font-bold text-gray-900 mb-2">Country</label>
+                <input
+                  type="text"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm"
+                  placeholder="Country"
+                  value={newReportCountry}
+                  onChange={(e) => setNewReportCountry(e.target.value)}
+                />
+              </div>
+
+              {/* Attachments */}
+              <div>
+                <label className="block text-sm font-bold text-gray-900 mb-2">Attachments</label>
+                <input
+                  type="file"
+                  ref={newReportFileRef}
+                  className="hidden"
+                  multiple
+                  accept="image/*"
+                  onChange={handleNewReportFileChange}
+                />
+                <button
+                  onClick={() => newReportFileRef.current?.click()}
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  <FiImage />
+                  Add Images
+                </button>
+                {newReportFiles.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {newReportFiles.map((file, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={URL.createObjectURL(file.file)}
+                          alt=""
+                          className="w-20 h-20 rounded-lg object-cover border border-gray-200"
+                        />
+                        <button
+                          onClick={() => removeNewReportFile(index)}
+                          className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <FiX className="text-xs" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                onClick={() => resetNewReportForm()}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitNewReport}
+                disabled={isSubmittingReport}
+                className="bg-brand-blue hover:bg-blue-600 text-white font-medium py-2 px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isSubmittingReport ? (
+                  <>
+                    <span className="animate-spin">⟳</span>
+                    <span>Submitting...</span>
+                  </>
+                ) : (
+                  <>
+                    <FiCheck />
+                    <span>Submit Report</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

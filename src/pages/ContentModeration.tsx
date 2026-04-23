@@ -1,9 +1,11 @@
 import React, { useState, useMemo } from "react";
 import MetricCard from "../components/MetricCard";
 import StatusBadge from "../components/StatusBadge";
+import ConfirmModal from "../components/ConfirmModal";
 import { FiHome, FiSearch, FiCheckSquare, FiAlertTriangle, FiChevronDown, FiPaperclip, FiMapPin, FiX, FiImage, FiExternalLink, FiCheck, FiTrash, FiFile, FiFileText, FiVideo, FiMap, FiEye, FiDownload, FiCloud } from "react-icons/fi";
 import adminDashboard from '../assets/images/adminDashboard.jpg';
-import { useDashboard, Report } from "../context/DashboardContext";
+import { useDashboard } from "../context/DashboardContext";
+import { Report } from "../interfaces/report";
 import toast from "react-hot-toast";
 
 const ContentModeration: React.FC = () => {
@@ -14,11 +16,17 @@ const ContentModeration: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [reportToDelete, setReportToDelete] = useState<string | null>(null);
   const itemsPerPage = 4;
 
+  const hazardReportsOnly = useMemo(() => {
+    return reports.filter((report) => report.reportType !== 'announcement');
+  }, [reports]);
+
   const filteredAndSortedReports = useMemo(() => {
-    let result = reports.filter((report) => {
-      const matchesSearch = report.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    let result = hazardReportsOnly.filter((report) => {
+      const matchesSearch = report.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                             report.id.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === "All Status" || report.status === statusFilter;
       return matchesSearch && matchesStatus;
@@ -27,9 +35,9 @@ const ContentModeration: React.FC = () => {
     if (sortOrder === "Oldest") {
       result = [...result].reverse();
     }
-    
+
     return result;
-  }, [reports, searchQuery, statusFilter, sortOrder]);
+  }, [hazardReportsOnly, searchQuery, statusFilter, sortOrder]);
 
   const totalPages = Math.max(1, Math.ceil(filteredAndSortedReports.length / itemsPerPage));
   const currentReports = filteredAndSortedReports.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -43,24 +51,39 @@ const ContentModeration: React.FC = () => {
     setShowViewModal(true);
   };
 
-  const handleStatusChange = (reportId: string, newStatus: string) => {
-    updateReport(reportId, { status: newStatus });
-    toast.success(`Report status updated to ${newStatus}`);
-    setShowViewModal(false);
-  };
-
-  const handleDelete = (reportId: string) => {
-    if (window.confirm('Are you sure you want to delete this report?')) {
-      deleteReport(reportId);
-      toast.success('Report deleted successfully');
+  const handleStatusChange = async (reportId: string, newStatus: string) => {
+    try {
+      await updateReport(reportId, { status: newStatus });
+      toast.success(`Report status updated to ${newStatus}`);
       setShowViewModal(false);
+    } catch (error) {
+      toast.error('Failed to update report status');
     }
   };
 
-  const pendingCount = reports.filter(r => r.status === 'Pending').length;
-  const investigatingCount = reports.filter(r => r.status === 'Active').length;
-  const resolvedCount = reports.filter(r => r.status === 'Confirmed' || r.status === 'Resolved').length;
-  const spamCount = reports.filter(r => r.status === 'Spam').length;
+  const handleDelete = (reportId: string) => {
+    setReportToDelete(reportId);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (reportToDelete !== null) {
+      try {
+        await deleteReport(reportToDelete);
+        toast.success('Report deleted successfully');
+        setShowViewModal(false);
+        setDeleteModalOpen(false);
+        setReportToDelete(null);
+      } catch (error) {
+        toast.error('Failed to delete report');
+      }
+    }
+  };
+
+  const pendingCount = hazardReportsOnly.filter(r => r.status === 'Pending').length;
+  const investigatingCount = hazardReportsOnly.filter(r => r.status === 'Active').length;
+  const resolvedCount = hazardReportsOnly.filter(r => r.status === 'Confirmed' || r.status === 'Resolved').length;
+  const spamCount = hazardReportsOnly.filter(r => r.status === 'Spam').length;
 
   const getFileIcon = (filename: string) => {
     const ext = filename?.split('.').pop()?.toLowerCase();
@@ -202,13 +225,13 @@ const ContentModeration: React.FC = () => {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
-                      <span className="flex items-center gap-1 text-gray-700">
+                      <span className="flex items-center gap-1 text-gray-700 font-medium">
                         <FiMapPin className="text-brand-blue shrink-0" />
-                        {row.location}
+                        {row.locationData?.city || row.location?.split(",")[0] || "Unknown"}
                       </span>
-                      {row.locationData?.city && (
-                        <span className="text-xs text-gray-400 ml-4">{row.locationData.city}, {row.locationData.country}</span>
-                      )}
+                      <span className="text-xs text-gray-400 ml-5">
+                        {row.locationData?.text || row.location}
+                      </span>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-center">
@@ -480,6 +503,20 @@ const ContentModeration: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setReportToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Delete Report"
+        message="Are you sure you want to delete this report? This action cannot be undone and the report will be permanently removed from the system."
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   );
 };

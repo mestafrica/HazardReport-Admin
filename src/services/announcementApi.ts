@@ -1,5 +1,5 @@
-import { Announcement } from "../context/DashboardContext";
 import {
+    Announcement,
     CreateAnnouncementData,
     UpdateAnnouncementData,
 } from "../interfaces/announcement";

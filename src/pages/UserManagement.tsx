@@ -1,41 +1,15 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import MetricCard from "../components/MetricCard";
 import StatusBadge from "../components/StatusBadge";
-import { FiHome, FiUsers, FiCheckSquare, FiSearch, FiChevronDown, FiX, FiEye, FiEdit, FiTrash, FiMail, FiPhone, FiCalendar, FiFileText, FiCheck, FiAlertCircle, FiSlash, FiCamera } from "react-icons/fi";
+import ConfirmModal from "../components/ConfirmModal";
+import { FiHome, FiUsers, FiCheckSquare, FiSearch, FiChevronDown, FiX, FiEye, FiEdit, FiTrash, FiMail, FiPhone, FiFileText, FiCheck, FiAlertCircle, FiSlash, FiCamera, FiLoader, FiShield, FiUser } from "react-icons/fi";
 import toast from "react-hot-toast";
 import adminDashboard from '../assets/images/adminDashboard.jpg';
-
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  date: string;
-  time: string;
-  reports: number;
-  phone: string;
-  status: 'Active' | 'Pending' | 'Suspended';
-  avatar?: string;
-  address?: string;
-  lastActive?: string;
-}
-
-const INITIAL_USERS: User[] = [
-  { id: 1, name: 'Abena Mensah', email: 'abenamensah@gmail.com', date: 'Oct 12, 2026', time: '12:23 PM', reports: 10, phone: '+233 24 849 2323', status: 'Active', address: 'Accra, Ghana', lastActive: '2 hours ago' },
-  { id: 2, name: 'Kwame Osei', email: 'kwameosei@gmail.com', date: 'Oct 15, 2026', time: '09:15 AM', reports: 4, phone: '+233 20 123 4567', status: 'Active', address: 'Kumasi, Ghana', lastActive: '5 hours ago' },
-  { id: 3, name: 'Sika Yeboah', email: 'sikayeboah@gmail.com', date: 'Nov 02, 2026', time: '14:45 PM', reports: 2, phone: '+233 27 987 6543', status: 'Suspended', address: 'Tema, Ghana', lastActive: '3 days ago' },
-  { id: 4, name: 'Kofi Annan', email: 'kofiannan@gmail.com', date: 'Jan 10, 2026', time: '16:30 PM', reports: 0, phone: '+233 55 555 5555', status: 'Pending', address: 'Takoradi, Ghana', lastActive: 'Never' },
-  { id: 5, name: 'Akua Serwaa', email: 'akuserwaa@gmail.com', date: 'Feb 15, 2026', time: '10:00 AM', reports: 15, phone: '+233 54 123 4567', status: 'Active', address: 'Cape Coast, Ghana', lastActive: '1 hour ago' },
-  { id: 6, name: 'Yaw Oppong', email: 'yawoppong@gmail.com', date: 'Mar 20, 2026', time: '08:30 AM', reports: 8, phone: '+233 50 987 6543', status: 'Active', address: 'Sunyani, Ghana', lastActive: '30 mins ago' },
-  { id: 7, name: 'Adwoa Asante', email: 'adwoaasante@gmail.com', date: 'Apr 05, 2026', time: '11:15 AM', reports: 3, phone: '+233 26 111 2222', status: 'Pending', address: 'Ho, Ghana', lastActive: 'Never' },
-  { id: 8, name: 'Kweku Mensah', email: 'kwekumensah@gmail.com', date: 'May 12, 2026', time: '15:45 PM', reports: 22, phone: '+233 55 333 4444', status: 'Active', address: 'Tamale, Ghana', lastActive: '10 mins ago' },
-  { id: 9, name: 'Efua Osei', email: 'efuaosei@gmail.com', date: 'Jun 18, 2026', time: '09:00 AM', reports: 1, phone: '+233 57 555 6666', status: 'Suspended', address: 'Koforidua, Ghana', lastActive: '1 week ago' },
-  { id: 10, name: 'Akwasi Darko', email: 'akwasidarko@gmail.com', date: 'Jul 22, 2026', time: '14:20 PM', reports: 6, phone: '+233 51 777 8888', status: 'Active', address: 'Wa, Ghana', lastActive: '2 days ago' },
-  { id: 11, name: ' Ama Boateng', email: 'amaboateng@gmail.com', date: 'Aug 30, 2026', time: '16:10 PM', reports: 12, phone: '+233 54 999 0000', status: 'Active', address: 'Bolgatanga, Ghana', lastActive: '5 mins ago' },
-  { id: 12, name: 'Kojo Williams', email: 'kojowilliams@gmail.com', date: 'Sep 14, 2026', time: '12:00 PM', reports: 0, phone: '+233 56 111 2222', status: 'Pending', address: 'Wa, Ghana', lastActive: 'Never' },
-];
+import { useDashboard } from "../context/DashboardContext";
+import { User } from "../interfaces/user";
 
 const UserManagement: React.FC = () => {
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const { users, refreshUsers, updateUser, deleteUser, isLoadingUsers } = useDashboard();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"Newest" | "Oldest">("Newest");
   const [currentPage, setCurrentPage] = useState(1);
@@ -45,8 +19,16 @@ const UserManagement: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [previewAvatar, setPreviewAvatar] = useState<string | null>(null);
+  const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const itemsPerPage = 5;
+
+  useEffect(() => {
+    refreshUsers();
+  }, []);
 
   const tabs = [
     { id: "All", label: "All Users", count: users.length },
@@ -57,9 +39,9 @@ const UserManagement: React.FC = () => {
 
   const filteredUsers = useMemo(() => {
     const result = users.filter((user) => {
-      const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            user.phone.includes(searchQuery);
+      const matchesSearch = user.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            user.phone?.includes(searchQuery);
       const matchesStatus = selectedTab === "All" || user.status === selectedTab;
       return matchesSearch && matchesStatus;
     });
@@ -93,37 +75,68 @@ const UserManagement: React.FC = () => {
     setCurrentPage(1);
   };
 
-  const handleStatusChange = (userId: number, newStatus: 'Active' | 'Pending' | 'Suspended') => {
-    setUsers(prev => prev.map(user => 
-      user.id === userId ? { ...user, status: newStatus } : user
-    ));
-    toast.success(`User status updated to ${newStatus}`);
-  };
-
-  const handleDeleteUser = (userId: number) => {
-    if (window.confirm('Are you sure you want to delete this user?')) {
-      setUsers(prev => prev.filter(user => user.id !== userId));
-      toast.success('User deleted successfully');
-      setShowViewModal(false);
+  const handleStatusChange = async (userId: string, newStatus: 'Active' | 'Pending' | 'Suspended') => {
+    try {
+      await updateUser(userId, { status: newStatus });
+      toast.success(`User status updated to ${newStatus}`);
+      if (selectedUser && selectedUser.id === userId) {
+        setSelectedUser({ ...selectedUser, status: newStatus });
+      }
+    } catch (error) {
+      toast.error('Failed to update user status');
     }
   };
 
-  const handleUpdateUser = () => {
+  const handleDeleteUser = (userId: string) => {
+    setUserToDelete(userId);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    
+    try {
+      setIsSubmitting(true);
+      await deleteUser(userToDelete);
+      toast.success('User deleted successfully');
+      setDeleteModalOpen(false);
+      setShowViewModal(false);
+      setUserToDelete(null);
+    } catch (error) {
+      toast.error('Failed to delete user');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateUser = async () => {
     if (!editingUser) return;
     
-    const updatedUser = { ...editingUser };
-    if (previewAvatar) {
-      updatedUser.avatar = previewAvatar;
+    try {
+      setIsSubmitting(true);
+      // Build updates object - pass avatarFile separately to bypass type check
+      const updates: Parameters<typeof updateUser>[1] = {
+        name: editingUser.name,
+        email: editingUser.email,
+        phone: editingUser.phone,
+        status: editingUser.status,
+      };
+      // Add avatar file if selected (bypassing TypeScript string check)
+      if (selectedAvatarFile) {
+        (updates as any).avatar = selectedAvatarFile;
+      }
+      await updateUser(editingUser.id, updates);
+      
+      toast.success('User updated successfully');
+      setShowEditModal(false);
+      setEditingUser(null);
+      setPreviewAvatar(null);
+      setSelectedAvatarFile(null);
+    } catch (error) {
+      toast.error('Failed to update user');
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    setUsers(prev => prev.map(user => 
-      user.id === editingUser.id ? updatedUser : user
-    ));
-    
-    toast.success('User updated successfully');
-    setShowEditModal(false);
-    setEditingUser(null);
-    setPreviewAvatar(null);
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>, isEditModal: boolean = false) => {
@@ -138,12 +151,18 @@ const UserManagement: React.FC = () => {
         return;
       }
       
+      // Store the actual File for API upload
+      if (isEditModal) {
+        setSelectedAvatarFile(file);
+      }
+      
       const reader = new FileReader();
       reader.onloadend = () => {
         const result = reader.result as string;
         if (isEditModal && editingUser) {
           setPreviewAvatar(result);
-          setEditingUser({ ...editingUser, avatar: result });
+          // Don't set base64 as avatar, just for preview
+          setEditingUser({ ...editingUser });
         }
       };
       reader.readAsDataURL(file);
@@ -158,6 +177,7 @@ const UserManagement: React.FC = () => {
   const openEditModal = (user: User) => {
     setEditingUser({ ...user });
     setPreviewAvatar(user.avatar || null);
+    setSelectedAvatarFile(null); // Reset any previously selected file
     setShowEditModal(true);
     setShowViewModal(false);
   };
@@ -277,7 +297,7 @@ const UserManagement: React.FC = () => {
             <thead className="text-xs text-brand-dark uppercase bg-transparent border-b border-gray-100">
               <tr>
                 <th className="px-6 py-4 font-bold tracking-wider">User Profile</th>
-                <th className="px-6 py-4 font-bold tracking-wider text-center">Join Date</th>
+                <th className="px-6 py-4 font-bold tracking-wider text-center">Role</th>
                 <th className="px-6 py-4 font-bold tracking-wider text-center">Reports</th>
                 <th className="px-6 py-4 font-bold tracking-wider text-center">Phone</th>
                 <th className="px-6 py-4 font-bold tracking-wider text-center">Status</th>
@@ -285,7 +305,16 @@ const UserManagement: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {currentUsers.map((user) => (
+              {isLoadingUsers ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500 font-medium">
+                    <div className="flex flex-col items-center">
+                      <FiLoader className="text-4xl text-brand-blue mb-3 animate-spin" />
+                      <p>Loading users...</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : currentUsers.map((user) => (
                 <tr key={user.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center space-x-4">
@@ -307,8 +336,23 @@ const UserManagement: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-center">
-                    <p className="font-bold text-gray-900">{user.date}</p>
-                    <p className="text-xs text-brand-blue font-medium">{user.time}</p>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                      user.role === 'admin' 
+                        ? 'bg-purple-50 text-purple-700' 
+                        : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {user.role === 'admin' ? (
+                        <>
+                          <FiShield className="text-xs" />
+                          Admin
+                        </>
+                      ) : (
+                        <>
+                          <FiUser className="text-xs" />
+                          User
+                        </>
+                      )}
+                    </span>
                   </td>
                   <td className="px-6 py-4 text-center">
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-bold">
@@ -344,7 +388,7 @@ const UserManagement: React.FC = () => {
                   </td>
                 </tr>
               ))}
-              {currentUsers.length === 0 && (
+              {!isLoadingUsers && currentUsers.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-gray-500 font-medium">
                     <div className="flex flex-col items-center">
@@ -507,11 +551,12 @@ const UserManagement: React.FC = () => {
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="flex items-center gap-2 text-gray-500 mb-1">
-                    <FiCalendar className="text-sm" />
-                    <span className="text-xs font-medium">Joined</span>
+                    {selectedUser.role === 'admin' ? <FiShield className="text-sm" /> : <FiUser className="text-sm" />}
+                    <span className="text-xs font-medium">Role</span>
                   </div>
-                  <p className="font-medium text-gray-900">{selectedUser.date}</p>
-                  <p className="text-xs text-gray-500">{selectedUser.time}</p>
+                  <p className={`font-medium ${selectedUser.role === 'admin' ? 'text-purple-700' : 'text-gray-900'}`}>
+                    {selectedUser.role === 'admin' ? 'Administrator' : 'User'}
+                  </p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="flex items-center gap-2 text-gray-500 mb-1">
@@ -679,22 +724,47 @@ const UserManagement: React.FC = () => {
             </div>
             <div className="p-4 border-t border-gray-100 flex justify-end gap-3">
               <button 
-                onClick={() => { setShowEditModal(false); setPreviewAvatar(null); }}
+                onClick={() => { setShowEditModal(false); setPreviewAvatar(null); setSelectedAvatarFile(null); }}
                 className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+                disabled={isSubmitting}
               >
                 Cancel
               </button>
               <button 
                 onClick={handleUpdateUser}
-                className="px-6 py-2 bg-brand-blue text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
+                disabled={isSubmitting}
+                className="px-6 py-2 bg-brand-blue text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <FiCheck />
-                Save Changes
+                {isSubmitting ? (
+                  <>
+                    <FiLoader className="animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <FiCheck />
+                    Save Changes
+                  </>
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setUserToDelete(null);
+        }}
+        onConfirm={confirmDeleteUser}
+        title="Delete User"
+        message="Are you sure you want to delete this user? This action cannot be undone and all user data will be permanently removed from the system."
+        confirmText={isSubmitting ? "Deleting..." : "Delete"}
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   );
 };

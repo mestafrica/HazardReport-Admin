@@ -12,7 +12,11 @@ interface SearchResult {
   path: string;
 }
 
-const TopBar: React.FC = () => {
+interface TopBarProps {
+  onMenuClick?: () => void;
+}
+
+const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
   const { userProfile, reports, announcements } = useDashboard();
   const navigate = useNavigate();
   
@@ -117,76 +121,86 @@ const TopBar: React.FC = () => {
   };
 
   return (
-    <header className="h-16 bg-white flex items-center justify-between px-6 border-b border-gray-100 sticky top-0 z-20">
-      <div className="flex-1 max-w-xl relative" ref={searchRef}>
-        <div className="relative">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-3">
-            <FaSearch className="text-gray-400" />
-          </span>
-          <input
-            type="text"
-            className="w-full pl-10 pr-10 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-brand-blue focus:ring-1 text-sm outline-none transition-all"
-            placeholder="Search reports, announcements..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => searchQuery.length >= 2 && setShowResults(true)}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setShowResults(false);
-              }}
-              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
-            >
-              <FaTimes />
-            </button>
+    <header className="h-14 sm:h-16 bg-white flex items-center justify-between px-4 sm:px-6 border-b border-gray-100 sticky top-0 z-20">
+      <div className="flex items-center gap-3 flex-1">
+        <button
+          onClick={onMenuClick}
+          className="lg:hidden text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-50"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <div className="flex-1 max-w-xl relative" ref={searchRef}>
+          <div className="relative">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3">
+              <FaSearch className="text-gray-400" />
+            </span>
+            <input
+              type="text"
+              className="w-full pl-10 pr-10 py-2 rounded-lg bg-gray-50 border border-gray-200 focus:ring-brand-blue focus:ring-1 text-sm outline-none transition-all"
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => searchQuery.length >= 2 && setShowResults(true)}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setShowResults(false);
+                }}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+              >
+                <FaTimes />
+              </button>
+            )}
+          </div>
+
+          {showResults && searchResults.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-100 max-h-96 overflow-y-auto z-30">
+              <div className="px-4 py-2 text-xs font-semibold text-gray-500 border-b border-gray-100 bg-gray-50">
+                Found {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
+              </div>
+              {searchResults.map((result) => (
+                <button
+                  key={`${result.type}-${result.id}`}
+                  onClick={() => handleResultClick(result)}
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+                    {getResultIcon(result.type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{result.title}</p>
+                    <p className="text-xs text-gray-500 truncate">{result.subtitle}</p>
+                  </div>
+                  <span className="px-2 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded capitalize">
+                    {result.type}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {showResults && searchResults.length === 0 && searchQuery.length >= 2 && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-100 p-6 text-center z-30">
+              <p className="text-gray-500 text-sm">No results found for "{searchQuery}"</p>
+              <p className="text-gray-400 text-xs mt-1">Try different keywords</p>
+            </div>
           )}
         </div>
-
-        {showResults && searchResults.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-100 max-h-96 overflow-y-auto z-30">
-            <div className="px-4 py-2 text-xs font-semibold text-gray-500 border-b border-gray-100 bg-gray-50">
-              Found {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
-            </div>
-            {searchResults.map((result) => (
-              <button
-                key={`${result.type}-${result.id}`}
-                onClick={() => handleResultClick(result)}
-                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left"
-              >
-                <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                  {getResultIcon(result.type)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{result.title}</p>
-                  <p className="text-xs text-gray-500 truncate">{result.subtitle}</p>
-                </div>
-                <span className="px-2 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded capitalize">
-                  {result.type}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {showResults && searchResults.length === 0 && searchQuery.length >= 2 && (
-          <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-100 p-6 text-center z-30">
-            <p className="text-gray-500 text-sm">No results found for "{searchQuery}"</p>
-            <p className="text-gray-400 text-xs mt-1">Try different keywords</p>
-          </div>
-        )}
       </div>
       
-      <div className="flex items-center space-x-4">
-        <div className="relative">
+      <div className="flex items-center space-x-2 sm:space-x-4">
+        <div className="relative hidden sm:block">
           <button 
             onClick={() => setShowNotifications(!showNotifications)}
             className="relative text-gray-500 hover:text-gray-700 transition-colors p-2 rounded-lg hover:bg-gray-50"
           >
-            <FaBell className="text-xl" />
+            <FaBell className="text-lg sm:text-xl" />
             {unreadCount > 0 && (
-              <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white font-bold">
+              <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 sm:h-5 w-4 sm:w-5 items-center justify-center rounded-full bg-red-500 text-[10px] sm:text-xs text-white font-bold">
                 {unreadCount}
               </span>
             )}

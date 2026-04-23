@@ -68,12 +68,12 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
 
   // Handle transparent background cases for Categories in Announcements
   if (['alert', 'info', 'update'].includes(normalizedStatus)) {
-      return <span className={`text-sm font-medium ${textClass}`}>{displayStatus}</span>;
+      return <span className={`text-xs sm:text-sm font-medium ${textClass}`}>{displayStatus}</span>;
   }
 
   return (
     <span
-      className={`px-3 py-1 rounded-full text-xs font-medium ${bgClass} ${textClass}`}
+      className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium ${bgClass} ${textClass}`}
     >
       {displayStatus}
     </span>
