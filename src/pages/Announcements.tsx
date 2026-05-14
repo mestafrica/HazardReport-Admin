@@ -3,7 +3,6 @@ import StatusBadge from "../components/StatusBadge";
 import ConfirmModal from "../components/ConfirmModal";
 import { FiVolume2, FiSearch, FiChevronDown, FiPaperclip, FiMapPin, FiX, FiFile, FiImage, FiFileText, FiVideo, FiEye, FiDownload, FiExternalLink, FiTrash, FiEdit, FiCheck, FiPlus } from "react-icons/fi";
 import toast from "react-hot-toast";
-import { FiCheck, FiChevronDown, FiDownload, FiEdit, FiExternalLink, FiEye, FiFile, FiFileText, FiImage, FiMapPin, FiPaperclip, FiPlus, FiSearch, FiTrash, FiVideo, FiVolume2, FiX } from "react-icons/fi";
 import adminDashboard from '../assets/images/adminDashboard.jpg';
 import { useDashboard } from "../context/DashboardContext";
 import { Announcement } from "../interfaces/announcement";
@@ -166,7 +165,7 @@ const Announcements: React.FC = () => {
         setShowViewModal(false);
         setDeleteModalOpen(false);
         setAnnouncementToDelete(null);
-      } catch (error) {
+      } catch {
         toast.error('Failed to delete announcement');
       }
     }
@@ -187,7 +186,7 @@ const Announcements: React.FC = () => {
       setShowEditModal(false);
       setEditingAnnouncement(null);
       setShowViewModal(false);
-    } catch (error) {
+    } catch {
       toast.error('Failed to update announcement');
     }
   };

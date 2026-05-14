@@ -43,7 +43,7 @@ const Dashboard: React.FC = () => {
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const newReportFileRef = useRef<HTMLInputElement>(null);
 
-  // Recent Reports Moderation pagination
+  //---- Recent Reports Moderation pagination
   const [recentReportsPage, setRecentReportsPage] = useState(1);
   const recentReportsItemsPerPage = 5;
 

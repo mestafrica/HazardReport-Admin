@@ -64,7 +64,7 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
       textClass = "text-gray-600";
   }
 
-  const displayStatus = status || "Unknown";
+  const displayStatus = status ? status.charAt(0).toUpperCase() + status.slice(1) : "Unknown";
 
   // Handle transparent background cases for Categories in Announcements
   if (['alert', 'info', 'update'].includes(normalizedStatus)) {

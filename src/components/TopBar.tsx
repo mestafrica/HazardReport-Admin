@@ -1,8 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { FaBell, FaSearch, FaAngleDown, FaTimes, FaFileAlt, FaBullhorn, FaUser, FaSignOutAlt } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import adminDashboard from '../assets/images/adminDashboard.jpg';
 import { useDashboard } from '../context/DashboardContext';
+import { AdminNotification } from '../interfaces/notification';
+import { notificationApi } from '../services/notificationApi';
 
 interface SearchResult {
   type: 'report' | 'announcement' | 'user';
@@ -16,31 +18,84 @@ interface TopBarProps {
   onMenuClick?: () => void;
 }
 
+interface NotificationSocketMessage {
+  type?: 'notification.created' | 'notifications.connected';
+  notification?: AdminNotification;
+}
+
+const getNotificationId = (notification: AdminNotification) =>
+  notification.id || notification._id || `${notification.type}-${notification.createdAt}`;
+
+const formatRelativeTime = (dateValue: string) => {
+  const createdAt = new Date(dateValue).getTime();
+
+  if (Number.isNaN(createdAt)) {
+    return '';
+  }
+
+  const seconds = Math.max(0, Math.floor((Date.now() - createdAt) / 1000));
+
+  if (seconds < 60) return 'Just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+
+  return new Date(dateValue).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
 const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
-  const { userProfile, reports, announcements } = useDashboard();
+  const { userProfile, reports, announcements, refreshData } = useDashboard();
   const navigate = useNavigate();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const notificationRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
-  
-  const notifications = [
-    { id: 1, text: 'New report submitted from Accra Central', time: '2 mins ago', unread: true },
-    { id: 2, text: 'Flood warning updated for Volta Region', time: '15 mins ago', unread: true },
-    { id: 3, text: 'User verification pending', time: '1 hour ago', unread: false },
-    { id: 4, text: 'System maintenance scheduled', time: '2 hours ago', unread: false },
-  ];
-  
-  const unreadCount = notifications.filter(n => n.unread).length;
+  const unreadCount = notifications.filter(notification => !notification.read).length;
+
+  const upsertNotification = useCallback((incoming: AdminNotification) => {
+    setNotifications(prev => {
+      const incomingId = getNotificationId(incoming);
+      const next = prev.filter(notification => getNotificationId(notification) !== incomingId);
+      return [incoming, ...next].slice(0, 50);
+    });
+  }, []);
+
+  const fetchNotifications = useCallback(async (limit = 20) => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    setIsLoadingNotifications(true);
+    try {
+      const data = await notificationApi.getNotifications(limit);
+      setNotifications(data.notifications);
+    } catch (error) {
+      console.error('Failed to load notifications:', error);
+    } finally {
+      setIsLoadingNotifications(false);
+    }
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setShowResults(false);
+      }
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
       }
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
         setShowProfileMenu(false);
@@ -50,6 +105,54 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | undefined;
+    let disposed = false;
+
+    const connect = () => {
+      const token = localStorage.getItem('token');
+      if (!token || disposed) return;
+
+      socket = new WebSocket(notificationApi.getSocketUrl(token));
+
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as NotificationSocketMessage;
+          if (payload.type === 'notification.created' && payload.notification) {
+            upsertNotification(payload.notification);
+            if (payload.notification.entityType === 'hazardReport') {
+              void refreshData();
+            }
+          }
+        } catch (error) {
+          console.error('Failed to parse notification socket message:', error);
+        }
+      };
+
+      socket.onclose = () => {
+        if (!disposed) {
+          reconnectTimer = window.setTimeout(connect, 5000);
+        }
+      };
+
+      socket.onerror = () => {
+        socket?.close();
+      };
+    };
+
+    fetchNotifications();
+    connect();
+
+    return () => {
+      disposed = true;
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+      }
+      socket?.close();
+    };
+  }, [fetchNotifications, refreshData, upsertNotification]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -105,6 +208,37 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
     setSearchQuery('');
     setShowResults(false);
     navigate(result.path);
+  };
+
+  const handleNotificationClick = async (notification: AdminNotification) => {
+    const notificationId = getNotificationId(notification);
+
+    if (!notification.read) {
+      setNotifications(prev =>
+        prev.map(item =>
+          getNotificationId(item) === notificationId ? { ...item, read: true } : item
+        )
+      );
+
+      try {
+        const updatedNotification = await notificationApi.markAsRead(notificationId);
+        setNotifications(prev =>
+          prev.map(item =>
+            getNotificationId(item) === notificationId ? updatedNotification : item
+          )
+        );
+      } catch (error) {
+        console.error('Failed to mark notification as read:', error);
+      }
+    }
+
+    setShowNotifications(false);
+
+    if (notification.link) {
+      navigate(notification.link);
+    } else if (notification.entityType === 'hazardReport') {
+      navigate('/admin-dashboard/moderation');
+    }
   };
 
   const getResultIcon = (type: string) => {
@@ -193,7 +327,7 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
       </div>
       
       <div className="flex items-center space-x-2 sm:space-x-4">
-        <div className="relative hidden sm:block">
+        <div className="relative hidden sm:block" ref={notificationRef}>
           <button 
             onClick={() => setShowNotifications(!showNotifications)}
             className="relative text-gray-500 hover:text-gray-700 transition-colors p-2 rounded-lg hover:bg-gray-50"
@@ -211,26 +345,46 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick }) => {
               <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
                 <h3 className="font-semibold text-gray-900">Notifications</h3>
               </div>
-              {notifications.map((notification) => (
-                <div 
-                  key={notification.id}
-                  className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${
-                    notification.unread ? 'bg-blue-50/50' : ''
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    {notification.unread && (
-                      <div className="w-2 h-2 mt-2 rounded-full bg-brand-blue shrink-0" />
-                    )}
-                    <div className={notification.unread ? '' : 'ml-5'}>
-                      <p className="text-sm text-gray-900">{notification.text}</p>
-                      <p className="text-xs text-gray-500 mt-1">{notification.time}</p>
-                    </div>
-                  </div>
+              {isLoadingNotifications ? (
+                <div className="px-4 py-6 text-center text-sm text-gray-500">
+                  Loading notifications...
                 </div>
-              ))}
+              ) : notifications.length === 0 ? (
+                <div className="px-4 py-6 text-center text-sm text-gray-500">
+                  No notifications yet
+                </div>
+              ) : (
+                notifications.map((notification) => {
+                  const isUnread = !notification.read;
+
+                  return (
+                    <button
+                      key={getNotificationId(notification)}
+                      onClick={() => handleNotificationClick(notification)}
+                      className={`w-full px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors text-left ${
+                        isUnread ? 'bg-blue-50/50' : ''
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {isUnread && (
+                          <div className="w-2 h-2 mt-2 rounded-full bg-brand-blue shrink-0" />
+                        )}
+                        <div className={isUnread ? 'min-w-0' : 'ml-5 min-w-0'}>
+                          <p className="text-sm text-gray-900">{notification.message}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {formatRelativeTime(notification.createdAt)}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
               <div className="px-4 py-3 text-center border-t border-gray-100">
-                <button className="text-sm text-brand-blue font-medium hover:underline">
+                <button
+                  onClick={() => fetchNotifications(50)}
+                  className="text-sm text-brand-blue font-medium hover:underline"
+                >
                   View all notifications
                 </button>
               </div>

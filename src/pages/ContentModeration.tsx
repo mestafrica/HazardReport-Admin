@@ -28,7 +28,7 @@ const ContentModeration: React.FC = () => {
     let result = hazardReportsOnly.filter((report) => {
       const matchesSearch = report.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                             report.id.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = statusFilter === "All Status" || report.status === statusFilter;
+      const matchesStatus = statusFilter === "All Status" || report.status?.toLowerCase() === statusFilter;
       return matchesSearch && matchesStatus;
     });
 
@@ -80,10 +80,10 @@ const ContentModeration: React.FC = () => {
     }
   };
 
-  const pendingCount = hazardReportsOnly.filter(r => r.status === 'Pending').length;
-  const investigatingCount = hazardReportsOnly.filter(r => r.status === 'Active').length;
-  const resolvedCount = hazardReportsOnly.filter(r => r.status === 'Confirmed' || r.status === 'Resolved').length;
-  const spamCount = hazardReportsOnly.filter(r => r.status === 'Spam').length;
+  const pendingCount = hazardReportsOnly.filter(r => r.status?.toLowerCase() === 'pending' || r.status?.toLowerCase() === 'open').length;
+  const investigatingCount = hazardReportsOnly.filter(r => r.status?.toLowerCase() === 'investigating' || r.status?.toLowerCase() === 'active').length;
+  const resolvedCount = hazardReportsOnly.filter(r => r.status?.toLowerCase() === 'confirmed' || r.status?.toLowerCase() === 'resolved').length;
+  const spamCount = hazardReportsOnly.filter(r => r.status?.toLowerCase() === 'spam').length;
 
   const getFileIcon = (filename: string) => {
     const ext = filename?.split('.').pop()?.toLowerCase();
@@ -156,11 +156,11 @@ const ContentModeration: React.FC = () => {
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option value="All Status">All Status</option>
-                <option value="Resolved">Resolved</option>
-                <option value="Confirmed">Confirmed</option>
-                <option value="Active">Active</option>
-                <option value="Pending">Pending</option>
-                <option value="Spam">Spam</option>
+                <option value="resolved">Resolved</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="investigating">Investigating</option>
+                <option value="pending">Pending</option>
+                <option value="spam">Spam</option>
               </select>
               <FiChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
             </div>
@@ -455,28 +455,28 @@ const ContentModeration: React.FC = () => {
                 <h4 className="text-sm font-bold text-gray-900 mb-2">Quick Actions</h4>
                 <div className="flex flex-wrap gap-2">
                   <button 
-                    onClick={() => handleStatusChange(selectedReport.id, 'Confirmed')}
+                    onClick={() => handleStatusChange(selectedReport.id, 'confirmed')}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-sm hover:bg-green-100 transition-colors"
                   >
                     <FiCheck />
                     Confirm
                   </button>
                   <button 
-                    onClick={() => handleStatusChange(selectedReport.id, 'Active')}
+                    onClick={() => handleStatusChange(selectedReport.id, 'investigating')}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 transition-colors"
                   >
                     <FiSearch />
                     Investigate
                   </button>
                   <button 
-                    onClick={() => handleStatusChange(selectedReport.id, 'Resolved')}
+                    onClick={() => handleStatusChange(selectedReport.id, 'resolved')}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg text-sm hover:bg-purple-100 transition-colors"
                   >
                     <FiCheckSquare />
                     Resolve
                   </button>
                   <button 
-                    onClick={() => handleStatusChange(selectedReport.id, 'Spam')}
+                    onClick={() => handleStatusChange(selectedReport.id, 'spam')}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-700 rounded-lg text-sm hover:bg-red-100 transition-colors"
                   >
                     <FiAlertTriangle />
